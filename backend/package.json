@@ -1,0 +1,24 @@
+{
+  "name": "testgen-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.10",
+    "express": "^4.19.2",
+    "google-auth-library": "^9.10.0",
+    "jsonwebtoken": "^9.0.2",
+    "@neondatabase/serverless": "^0.9.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.21.4"
+  }
+}

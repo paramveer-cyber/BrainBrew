@@ -1,0 +1,26 @@
+node_modules/
+drizzle/
+dist/
+build/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage/Build
+coverage
+.nyc_output
+dist
+build/Release
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE/System
+.DS_Store
+.vscode
