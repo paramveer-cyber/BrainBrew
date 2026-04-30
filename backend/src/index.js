@@ -10,7 +10,7 @@ import adminRoutes from "./modules/admin/admin.routes.js";
 const app = express();
 
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: ["http://localhost:5173", "https://brainbrew.pages.dev"],
   credentials: true,
 }));
 app.use(express.json());
@@ -21,6 +21,7 @@ app.use("/api", generatorRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.get("/health", (_, res) => res.json({ status: "ok", ts: Date.now() }));
+app.use((_, res) => res.status(404).json({ error: "Not found" }));
 
 const server = createServer(app);
 const PORT = process.env.PORT || 4000;
