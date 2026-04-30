@@ -1,5 +1,3 @@
-// ── TestGen API client – pure fetch(), no axios ─────────────────────────────
-
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
 let _token: string | null = localStorage.getItem("tg_token");
@@ -11,7 +9,6 @@ export const setToken = (t: string | null) => {
   else localStorage.removeItem("tg_token");
 };
 
-// ── Admin password (session-only, never persisted to localStorage) ─────────
 let _adminPassword: string | null = null;
 export const setAdminPassword = (pw: string | null) => { _adminPassword = pw; };
 export const getAdminPassword = () => _adminPassword;
