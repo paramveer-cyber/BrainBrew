@@ -7,6 +7,7 @@ import {
   Outlet,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
+import { ScrollToTop } from "./components/ui";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
@@ -50,7 +51,7 @@ const ProtectedRoute = () => {
             animation: "tgPulse 1.4s ease-in-out infinite",
           }}
         >
-          TG
+          BB
         </div>
         <div
           style={{
@@ -81,6 +82,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />

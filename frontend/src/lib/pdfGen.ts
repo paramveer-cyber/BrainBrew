@@ -33,6 +33,17 @@ const FONT_TITLE = 18;
 
 const LINE = 5.5;
 
+// ─── Measure header height (page 1) ──────────────────────────────────────────
+function measureHeaderHeight(doc: jsPDF, meta: TestMeta): number {
+  const chapterName = meta.chapter || meta.title;
+  doc.setFont("times", "bold");
+  doc.setFontSize(FONT_TITLE);
+  const headingLines = doc.splitTextToSize(chapterName, CW - 55);
+  const headingBottomY = 22 + (headingLines.length - 1) * 7;
+  // header ends at headingBottomY + 23 (subheading + instructions + rule)
+  return headingBottomY + 23;
+}
+
 // ─── Header ──────────────────────────────────────────────────────────────────
 function drawHeader(
   doc: jsPDF,
@@ -127,11 +138,16 @@ function measureQuestion(
 
   if (q.options?.length) {
     doc.setFont("times", "normal");
-    q.options.forEach((opt) => {
-      const ol = doc.splitTextToSize(opt, CW - 20);
-      h += ol.length * LINE + 1.5;
-    });
-    h += 3;
+    const SHORT = q.options.every((o) => o.length < 35);
+    if (SHORT && q.options.length === 4) {
+      h += 2 * (LINE + 1.5) + 3; // two rows of two-column layout
+    } else {
+      q.options.forEach((opt) => {
+        const ol = doc.splitTextToSize(opt, CW - 20);
+        h += ol.length * LINE + 1.5;
+      });
+      h += 3;
+    }
   }
 
   if (type === "solution") {
@@ -244,14 +260,16 @@ function calcTotalPages(
   questions: Question[],
   type: "test" | "solution"
 ): number {
+  // Use actual measured header height instead of a hardcoded guess
+  const page1Start = measureHeaderHeight(doc, meta);
   let page = 1;
-  let y = 60; // approx page-1 content start
+  let y = page1Start;
 
   questions.forEach((q, i) => {
     const h = measureQuestion(doc, q, i, type);
     if (y + h > PAGE_H - MB - 5) {
       page++;
-      y = MT; // approx continuation page content start (no header)
+      y = MT; // continuation pages start at top margin (no header)
     }
     y += h;
   });

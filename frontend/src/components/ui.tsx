@@ -1,53 +1,109 @@
-import React, { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { ReactNode, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
-// ── TopBar ──────────────────────────────────────────────────────────────────
-export const TopBar = ({ user, onLogout }: { user: any; onLogout: () => void }) => (
-  <header style={{
-    background: "var(--bg-surface)", borderBottom: "1px solid var(--border)",
-    padding: "0 20px", height: 56, display: "flex", alignItems: "center",
-    justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100,
-    backdropFilter: "blur(12px)",
-  }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div style={{
-        width: 30, height: 30, background: "var(--accent)", borderRadius: 7,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "var(--font-mono)", fontWeight: 800, fontSize: 12, color: "#000",
-        boxShadow: "0 0 8px rgba(45,212,191,0.3)",
-      }}>TG</div>
-      <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.06em" }}>TESTGEN</span>
-    </div>
-    {user && (
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {user.avatarUrl && (
-          <img src={user.avatarUrl} alt="" style={{
-            width: 28, height: 28, borderRadius: "50%",
-            border: "1.5px solid var(--border-strong)",
-          }} />
-        )}
-        <span style={{ fontSize: 13, color: "var(--text-secondary)", display: "none" }}
-          className="sm-show">{user.name}</span>
-        <button onClick={onLogout} style={{
-          background: "none", border: "1px solid var(--border)", color: "var(--text-muted)",
-          padding: "4px 12px", borderRadius: "var(--radius)", fontSize: 12,
-          transition: "all 0.2s", fontFamily: "var(--font-mono)",
+// ── ScrollToTop: auto-scroll on route change ─────────────────────────────────
+export const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [pathname]);
+  return null;
+};
+
+// ── TopBar ───────────────────────────────────────────────────────────────────
+const NAV_LINKS = [
+  { path: "/home",      label: "Home"     },
+  { path: "/generator", label: "Generate" },
+  { path: "/results",   label: "Results"  },
+  { path: "/admin",     label: "Admin"    },
+];
+
+export const TopBar = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  return (
+    <header style={{
+      background: "var(--bg-surface)", borderBottom: "1px solid var(--border)",
+      padding: "0 24px", height: 56, display: "flex", alignItems: "center",
+      justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100,
+      backdropFilter: "blur(12px)",
+    }}>
+      {/* Logo — links to / */}
+      <button
+        onClick={() => navigate("/")}
+        style={{
+          display: "flex", alignItems: "center", gap: 10,
+          background: "none", border: "none", cursor: "pointer", padding: 0,
         }}
-          onMouseEnter={e => {
-            (e.currentTarget).style.borderColor = "var(--danger)";
-            (e.currentTarget).style.color = "var(--danger)";
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget).style.borderColor = "var(--border)";
-            (e.currentTarget).style.color = "var(--text-muted)";
-          }}
-        >logout</button>
-      </div>
-    )}
-  </header>
-);
+      >
+        <div style={{
+          width: 30, height: 30, background: "var(--accent)", borderRadius: 7,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: "var(--font-mono)", fontWeight: 800, fontSize: 11, color: "#000",
+          boxShadow: "0 0 8px rgba(45,212,191,0.3)",
+        }}>BB</div>
+        <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.06em", color: "var(--text-primary)" }}>
+          BRAINBREW
+        </span>
+      </button>
 
-// ── BottomNav ───────────────────────────────────────────────────────────────
+      {/* Desktop nav links */}
+      <nav className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {NAV_LINKS.map(item => {
+          const active = pathname.startsWith(item.path);
+          return (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              style={{
+                background: active ? "var(--accent-dim)" : "none",
+                border: active ? "1px solid var(--border-strong)" : "1px solid transparent",
+                color: active ? "var(--accent)" : "var(--text-secondary)",
+                padding: "5px 14px", borderRadius: "var(--radius)",
+                fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: active ? 700 : 400,
+                cursor: "pointer", transition: "all 0.18s", letterSpacing: "0.04em",
+              }}
+              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)"; }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {user && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {user.avatarUrl && (
+            <img src={user.avatarUrl} alt="" style={{
+              width: 28, height: 28, borderRadius: "50%",
+              border: "1.5px solid var(--border-strong)",
+            }} />
+          )}
+          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}
+            className="sm-show">{user.name}</span>
+          <button onClick={onLogout} style={{
+            background: "none", border: "1px solid var(--border)", color: "var(--text-muted)",
+            padding: "4px 12px", borderRadius: "var(--radius)", fontSize: 12,
+            transition: "all 0.2s", fontFamily: "var(--font-mono)",
+          }}
+            onMouseEnter={e => {
+              (e.currentTarget).style.borderColor = "var(--danger)";
+              (e.currentTarget).style.color = "var(--danger)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget).style.borderColor = "var(--border)";
+              (e.currentTarget).style.color = "var(--text-muted)";
+            }}
+          >logout</button>
+        </div>
+      )}
+    </header>
+  );
+};
+
+// ── BottomNav — mobile only ───────────────────────────────────────────────────
 const NAV_ITEMS = [
   { path: "/home",      label: "Home",     icon: "⌂"  },
   { path: "/generator", label: "Generate", icon: "⚡" },
@@ -58,7 +114,7 @@ const NAV_ITEMS = [
 export const BottomNav = ({ current }: { current: string }) => {
   const navigate = useNavigate();
   return (
-    <nav style={{
+    <nav className="bottom-nav" style={{
       position: "fixed", bottom: 0, left: 0, right: 0,
       background: "var(--bg-surface)", borderTop: "1px solid var(--border)",
       display: "flex", zIndex: 100, padding: "8px 0 max(12px, env(safe-area-inset-bottom))",

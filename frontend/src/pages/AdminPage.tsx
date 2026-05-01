@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { adminFetch, setAdminPassword, getAdminPassword, clearAdminSession } from "../lib/api";
@@ -64,6 +64,13 @@ const ErrBox = ({ msg }: { msg: string }) => (
     fontSize: 13, fontFamily: "var(--font-mono)", marginBottom: 14,
   }}>⚠ {msg}</div>
 );
+
+// ── Filter row ─────────────────────────────────────────────────────────────────
+const filterSelectStyle: React.CSSProperties = {
+  background: "var(--bg-elevated)", border: "1px solid var(--border)",
+  borderRadius: 8, color: "var(--text-primary)", padding: "8px 14px",
+  fontSize: 13, outline: "none", cursor: "pointer", fontFamily: "inherit",
+};
 
 // ── Modal shell ───────────────────────────────────────────────────────────────
 const Modal = ({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) => (
@@ -297,8 +304,10 @@ function DashboardTab() {
 }
 
 // ── Subjects Tab ──────────────────────────────────────────────────────────────
-function SubjectsTab() {
+function SubjectsTab({ refreshKey }: { refreshKey: number }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [filterClass, setFilterClass] = useState("");
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
@@ -310,13 +319,17 @@ function SubjectsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const d = await adminFetch<{ subjects: Subject[] }>("/subjects");
-      setSubjects(d.subjects);
+      const [sd, cd] = await Promise.all([
+        adminFetch<{ subjects: Subject[] }>("/subjects"),
+        adminFetch<{ chapters: Chapter[] }>("/chapters"),
+      ]);
+      setSubjects(sd.subjects);
+      setChapters(cd.chapters);
     } catch (e: any) { setErr(e.message); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   const openAdd = () => { setForm({ name: "", code: "" }); setEditing(null); setFormErr(""); setModal("add"); };
   const openEdit = (s: Subject) => { setForm({ name: s.name, code: s.code }); setEditing(s); setFormErr(""); setModal("edit"); };
@@ -339,34 +352,68 @@ function SubjectsTab() {
     } catch (e: any) { alert(e.message); }
   };
 
+  // Get class levels that exist for each subject
+  const classesForSubject = (subjectId: string): string[] => {
+    const cls = [...new Set(chapters.filter(c => c.subjectId === subjectId).map(c => c.classLevel))];
+    return cls.sort((a, b) => Number(a) - Number(b));
+  };
+
+  // Filter subjects by selected class
+  const filteredSubjects = filterClass
+    ? subjects.filter(s => classesForSubject(s.id).includes(filterClass))
+    : subjects;
+
   return (
     <div>
       <SectionHeader title="Subjects" sub="Manage top-level subjects." action={
         <Btn onClick={openAdd} style={{ fontSize: 12, padding: "8px 16px" }}>+ Add Subject</Btn>
       } />
 
+      {/* Class filter */}
+      <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <select style={{ ...filterSelectStyle, minWidth: 160 }} value={filterClass} onChange={e => setFilterClass(e.target.value)}>
+          <option value="">All Classes</option>
+          {CLASS_LEVELS.map(c => <option key={c} value={c}>Class {c}</option>)}
+        </select>
+        {filterClass && (
+          <button onClick={() => setFilterClass("")} style={{
+            background: "none", border: "1px solid var(--border)", color: "var(--text-muted)",
+            padding: "6px 12px", borderRadius: 8, fontSize: 12, fontFamily: "var(--font-mono)", cursor: "pointer",
+          }}>✕ Clear</button>
+        )}
+        <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          {filteredSubjects.length} subject{filteredSubjects.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
       {loading && <Loader />}
       {err && <ErrBox msg={err} />}
-      {!loading && subjects.length === 0 && <EmptyState msg="No subjects yet. Add one!" />}
+      {!loading && filteredSubjects.length === 0 && <EmptyState msg={filterClass ? `No subjects have chapters for Class ${filterClass}.` : "No subjects yet. Add one!"} />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {subjects.map(s => (
-          <Card key={s.id} style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</span>
-                <Tag>{s.code}</Tag>
+        {filteredSubjects.map(s => {
+          const classTags = classesForSubject(s.id);
+          return (
+            <Card key={s.id} style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</span>
+                  <Tag>{s.code}</Tag>
+                  {classTags.map(cl => (
+                    <Tag key={cl} color="var(--text-secondary)">Cl {cl}</Tag>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+                  {s.chapterCount} chapters · {Number(s.questionCount).toLocaleString()} questions
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
-                {s.chapterCount} chapters · {s.questionCount} questions
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <Btn variant="ghost" onClick={() => openEdit(s)} style={{ fontSize: 12, padding: "6px 12px" }}>Edit</Btn>
+                <Btn variant="danger" onClick={() => remove(s)} style={{ fontSize: 12, padding: "6px 12px" }}>Delete</Btn>
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <Btn variant="ghost" onClick={() => openEdit(s)} style={{ fontSize: 12, padding: "6px 12px" }}>Edit</Btn>
-              <Btn variant="danger" onClick={() => remove(s)} style={{ fontSize: 12, padding: "6px 12px" }}>Delete</Btn>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
       {modal && (
@@ -389,10 +436,11 @@ function SubjectsTab() {
 }
 
 // ── Chapters Tab ──────────────────────────────────────────────────────────────
-function ChaptersTab() {
+function ChaptersTab({ refreshKey }: { refreshKey: number }) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [filterSubject, setFilterSubject] = useState("");
+  const [filterClass, setFilterClass] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
@@ -414,9 +462,9 @@ function ChaptersTab() {
     finally { setLoading(false); }
   }, [filterSubject]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
-  const openAdd = () => { setForm({ name: "", subjectId: filterSubject || "", classLevel: "" }); setEditing(null); setFormErr(""); setModal("add"); };
+  const openAdd = () => { setForm({ name: "", subjectId: filterSubject || "", classLevel: filterClass || "" }); setEditing(null); setFormErr(""); setModal("add"); };
   const openEdit = (c: Chapter) => { setForm({ name: c.name, subjectId: c.subjectId, classLevel: c.classLevel }); setEditing(c); setFormErr(""); setModal("edit"); };
 
   const save = async () => {
@@ -437,7 +485,10 @@ function ChaptersTab() {
     } catch (e: any) { alert(e.message); }
   };
 
-  const grouped = chapters.reduce((acc, c) => {
+  // Apply class filter client-side
+  const displayed = filterClass ? chapters.filter(c => c.classLevel === filterClass) : chapters;
+
+  const grouped = displayed.reduce((acc, c) => {
     const key = c.subjectName || c.subjectId;
     if (!acc[key]) acc[key] = [];
     acc[key].push(c);
@@ -450,17 +501,30 @@ function ChaptersTab() {
         <Btn onClick={openAdd} style={{ fontSize: 12, padding: "8px 16px" }}>+ Add Chapter</Btn>
       } />
 
-      {/* Subject filter */}
-      <div style={{ marginBottom: 16 }}>
-        <select style={{ ...selectStyle, width: "auto", minWidth: 200 }} value={filterSubject} onChange={e => setFilterSubject(e.target.value)}>
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+        <select style={{ ...filterSelectStyle, minWidth: 180 }} value={filterSubject} onChange={e => setFilterSubject(e.target.value)}>
           <option value="">All Subjects</option>
           {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        <select style={{ ...filterSelectStyle, minWidth: 140 }} value={filterClass} onChange={e => setFilterClass(e.target.value)}>
+          <option value="">All Classes</option>
+          {CLASS_LEVELS.map(c => <option key={c} value={c}>Class {c}</option>)}
+        </select>
+        {(filterSubject || filterClass) && (
+          <button onClick={() => { setFilterSubject(""); setFilterClass(""); }} style={{
+            background: "none", border: "1px solid var(--border)", color: "var(--text-muted)",
+            padding: "6px 12px", borderRadius: 8, fontSize: 12, fontFamily: "var(--font-mono)", cursor: "pointer",
+          }}>✕ Clear</button>
+        )}
+        <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          {displayed.length} chapter{displayed.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {loading && <Loader />}
       {err && <ErrBox msg={err} />}
-      {!loading && chapters.length === 0 && <EmptyState msg="No chapters found." />}
+      {!loading && displayed.length === 0 && <EmptyState msg="No chapters found." />}
 
       {Object.entries(grouped).map(([subjectName, chs]) => (
         <div key={subjectName} style={{ marginBottom: 20 }}>
@@ -476,7 +540,7 @@ function ChaptersTab() {
                     <Tag>Class {c.classLevel}</Tag>
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, fontFamily: "var(--font-mono)" }}>
-                    {c.questionCount} questions
+                    {Number(c.questionCount).toLocaleString()} questions
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -520,12 +584,12 @@ function ChaptersTab() {
 }
 
 // ── Questions Tab ─────────────────────────────────────────────────────────────
-function QuestionsTab() {
+function QuestionsTab({ onMutate }: { onMutate: () => void }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [filteredChapters, setFilteredChapters] = useState<Chapter[]>([]);
-  const [filters, setFilters] = useState({ subjectId: "", chapterId: "", difficulty: "" });
+  const [filters, setFilters] = useState({ subjectId: "", chapterId: "", difficulty: "", classLevel: "" });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const LIMIT = 30;
@@ -564,9 +628,11 @@ function QuestionsTab() {
   }, []);
 
   useEffect(() => {
-    if (filters.subjectId) setFilteredChapters(chapters.filter(c => c.subjectId === filters.subjectId));
-    else setFilteredChapters(chapters);
-  }, [filters.subjectId, chapters]);
+    let filtered = chapters;
+    if (filters.subjectId) filtered = filtered.filter(c => c.subjectId === filters.subjectId);
+    if (filters.classLevel) filtered = filtered.filter(c => c.classLevel === filters.classLevel);
+    setFilteredChapters(filtered);
+  }, [filters.subjectId, filters.classLevel, chapters]);
 
   const openAdd = () => {
     setForm({ subjectId: filters.subjectId || "", chapterId: filters.chapterId || "", difficulty: "easy", questionText: "", options: ["", "", "", ""], answer: "", explanation: "", marks: 1, isMultiChoice: false });
@@ -575,7 +641,7 @@ function QuestionsTab() {
   const openEdit = (q: Question) => {
     setForm({
       subjectId: q.subjectId, chapterId: q.chapterId, difficulty: q.difficulty,
-      questionText: q.questionText, options: q.options?.length ? [...q.options, ...Array(4).fill("") ].slice(0, 4) : ["", "", "", ""],
+      questionText: q.questionText, options: q.options?.length ? [...q.options, ...Array(4).fill("")].slice(0, 4) : ["", "", "", ""],
       answer: q.answer, explanation: q.explanation || "", marks: q.marks,
       isMultiChoice: !!(q.options && q.options.length > 0),
     });
@@ -594,14 +660,20 @@ function QuestionsTab() {
       };
       if (modal === "add") await adminFetch("/questions", { method: "POST", body: payload });
       else await adminFetch(`/questions/${editing!.id}`, { method: "PUT", body: payload });
-      setModal(null); load();
+      setModal(null);
+      load();
+      onMutate(); // notify parent to refresh subjects/chapters counts
     } catch (e: any) { setFormErr(e.message); }
     finally { setSaving(false); }
   };
 
   const remove = async (q: Question) => {
     if (!confirm("Delete this question permanently?")) return;
-    try { await adminFetch(`/questions/${q.id}`, { method: "DELETE" }); load(); }
+    try {
+      await adminFetch(`/questions/${q.id}`, { method: "DELETE" });
+      load();
+      onMutate();
+    }
     catch (e: any) { alert(e.message); }
   };
 
@@ -612,24 +684,34 @@ function QuestionsTab() {
 
   return (
     <div>
-      <SectionHeader title="Questions" sub={`${total} total questions.`} action={
+      <SectionHeader title="Questions" sub={`${total.toLocaleString()} total questions.`} action={
         <Btn onClick={openAdd} style={{ fontSize: 12, padding: "8px 16px" }}>+ Add Question</Btn>
       } />
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-        <select style={{ ...selectStyle, flex: 1, minWidth: 140 }} value={filters.subjectId} onChange={e => { setFilters(f => ({ ...f, subjectId: e.target.value, chapterId: "" })); setPage(1); }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+        <select style={{ ...filterSelectStyle, flex: 1, minWidth: 140 }} value={filters.subjectId} onChange={e => { setFilters(f => ({ ...f, subjectId: e.target.value, chapterId: "" })); setPage(1); }}>
           <option value="">All Subjects</option>
           {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <select style={{ ...selectStyle, flex: 1, minWidth: 140 }} value={filters.chapterId} onChange={e => { setFilters(f => ({ ...f, chapterId: e.target.value })); setPage(1); }}>
+        <select style={{ ...filterSelectStyle, minWidth: 120 }} value={filters.classLevel} onChange={e => { setFilters(f => ({ ...f, classLevel: e.target.value, chapterId: "" })); setPage(1); }}>
+          <option value="">All Classes</option>
+          {CLASS_LEVELS.map(c => <option key={c} value={c}>Class {c}</option>)}
+        </select>
+        <select style={{ ...filterSelectStyle, flex: 1, minWidth: 140 }} value={filters.chapterId} onChange={e => { setFilters(f => ({ ...f, chapterId: e.target.value })); setPage(1); }}>
           <option value="">All Chapters</option>
           {filteredChapters.map(c => <option key={c.id} value={c.id}>{c.name} (Cl {c.classLevel})</option>)}
         </select>
-        <select style={{ ...selectStyle, minWidth: 120 }} value={filters.difficulty} onChange={e => { setFilters(f => ({ ...f, difficulty: e.target.value })); setPage(1); }}>
+        <select style={{ ...filterSelectStyle, minWidth: 120 }} value={filters.difficulty} onChange={e => { setFilters(f => ({ ...f, difficulty: e.target.value })); setPage(1); }}>
           <option value="">All Levels</option>
           {DIFFS.map(d => <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>)}
         </select>
+        {(filters.subjectId || filters.chapterId || filters.difficulty || filters.classLevel) && (
+          <button onClick={() => { setFilters({ subjectId: "", chapterId: "", difficulty: "", classLevel: "" }); setPage(1); }} style={{
+            background: "none", border: "1px solid var(--border)", color: "var(--text-muted)",
+            padding: "6px 12px", borderRadius: 8, fontSize: 12, fontFamily: "var(--font-mono)", cursor: "pointer",
+          }}>✕ Clear</button>
+        )}
       </div>
 
       {loading && <Loader />}
@@ -666,7 +748,9 @@ function QuestionsTab() {
       {totalPages > 1 && (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 20 }}>
           <Btn variant="ghost" disabled={page === 1} onClick={() => setPage(p => p - 1)} style={{ fontSize: 12, padding: "6px 16px" }}>← Prev</Btn>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-secondary)" }}>{page} / {totalPages}</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-secondary)" }}>
+            {page} / {totalPages} · {total.toLocaleString()} total
+          </span>
           <Btn variant="ghost" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} style={{ fontSize: 12, padding: "6px 16px" }}>Next →</Btn>
         </div>
       )}
@@ -753,9 +837,12 @@ export default function AdminPage() {
   const navigate = useNavigate();
   const [authed, setAuthed] = useState(() => !!getAdminPassword());
   const [tab, setTab] = useState<Tab>("dashboard");
+  // refreshKey increments whenever questions mutate, so Subjects/Chapters re-fetch their counts
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleLogout = async () => { clearAdminSession(); await logout(); navigate("/login"); };
   const handleAdminLogout = () => { clearAdminSession(); setAuthed(false); };
+  const handleMutate = () => setRefreshKey(k => k + 1);
 
   if (!authed) return <PasswordGate onSuccess={() => setAuthed(true)} />;
 
@@ -771,19 +858,10 @@ export default function AdminPage() {
           width: 220, flexShrink: 0, padding: "24px 12px",
           borderRight: "1px solid var(--border)",
           display: "none",
-          // @ts-ignore
-          "--sidebar-display": "flex",
         }} className="admin-sidebar">
-          <style>{`
-            @media (min-width: 900px) {
-              .admin-sidebar { display: flex !important; flex-direction: column; }
-              .admin-bottom-nav { display: none !important; }
-              .admin-tab-bar { display: none !important; }
-            }
-          `}</style>
           <div style={{ marginBottom: 24, padding: "0 8px" }}>
             <div style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", fontSize: 10, letterSpacing: "0.2em", marginBottom: 4 }}>// ADMIN PANEL</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>TestGen Admin</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>BrainBrew Admin</div>
           </div>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -828,9 +906,9 @@ export default function AdminPage() {
           </div>
 
           {tab === "dashboard" && <DashboardTab />}
-          {tab === "subjects"  && <SubjectsTab />}
-          {tab === "chapters"  && <ChaptersTab />}
-          {tab === "questions" && <QuestionsTab />}
+          {tab === "subjects"  && <SubjectsTab refreshKey={refreshKey} />}
+          {tab === "chapters"  && <ChaptersTab refreshKey={refreshKey} />}
+          {tab === "questions" && <QuestionsTab onMutate={handleMutate} />}
         </main>
       </div>
 
