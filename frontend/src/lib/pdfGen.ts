@@ -16,6 +16,7 @@ export interface TestMeta {
   classLevel?: string;
   subject?: string;
   chapter?: string;
+  totalMarks?: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -97,9 +98,10 @@ function drawHeader(
 
   // Instructions line
   const totalQs = Object.values(meta.config).reduce((a, b) => a + (Number(b) || 0), 0);
+  const totalMarks = meta.totalMarks ?? totalQs;
   const instrLine = type === "solution"
-    ? `Solution Key  ·  Total Questions: ${totalQs}  ·  Total Marks: ${totalQs}`
-    : `Answer all questions  ·  Total Questions: ${totalQs}  ·  Total Marks: ${totalQs}`;
+    ? `Solution Key  ·  Total Questions: ${totalQs}  ·  Total Marks: ${totalMarks}`
+    : `Answer all questions  ·  Total Questions: ${totalQs}  ·  Total Marks: ${totalMarks}`;
   doc.setFontSize(FONT_SMALL);
   doc.setTextColor(80);
   doc.text(instrLine, centre, headingBottomY + 13, { align: "center" });
@@ -290,10 +292,14 @@ export const generateTestPDF = (
     (a, b) => (diffOrder[a.difficulty] ?? 9) - (diffOrder[b.difficulty] ?? 9)
   );
 
-  const totalPages = calcTotalPages(doc, meta, sorted, type);
+  // Compute total marks by summing each question's marks value
+  const computedTotalMarks = sorted.reduce((sum, q) => sum + (q.marks ?? 1), 0);
+  const metaWithMarks: TestMeta = { ...meta, totalMarks: computedTotalMarks };
+
+  const totalPages = calcTotalPages(doc, metaWithMarks, sorted, type);
 
   let pageNum = 1;
-  let y = drawHeader(doc, meta, type, pageNum, totalPages);
+  let y = drawHeader(doc, metaWithMarks, type, pageNum, totalPages);
 
   sorted.forEach((q, i) => {
     const h = measureQuestion(doc, q, i, type);
@@ -301,7 +307,7 @@ export const generateTestPDF = (
       drawFooter(doc, pageNum, totalPages);
       doc.addPage();
       pageNum++;
-      y = drawHeader(doc, meta, type, pageNum, totalPages);
+      y = drawHeader(doc, metaWithMarks, type, pageNum, totalPages);
     }
     y = renderQuestion(doc, q, i, type, y);
   });

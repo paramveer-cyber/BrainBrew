@@ -24,11 +24,13 @@ export const fetchChapters = async (subjectId, classLevel) => {
   return db.select().from(chapters).where(where);
 };
 
+/**
+ * Build a test from a single chapter (legacy mode).
+ */
 export const buildTest = async (userId, subjectId, chapterId, classLevel, config) => {
   const totalRequested = Object.values(config).reduce((a, b) => a + (Number(b) || 0), 0);
   if (totalRequested === 0) throw new Error("Must request at least 1 question");
 
-  // Pre-check availability counts in one query (grouped) to avoid partial selects
   const availRows = await db
     .select({ difficulty: questions.difficulty, cnt: sql`COUNT(*)` })
     .from(questions)
@@ -38,7 +40,6 @@ export const buildTest = async (userId, subjectId, chapterId, classLevel, config
   const available = { easy: 0, medium: 0, difficult: 0, extreme: 0 };
   for (const r of availRows) available[r.difficulty] = Number(r.cnt);
 
-  // Strict validation – reject before touching RANDOM() if any difficulty exceeds stock
   const violations = [];
   for (const diff of DIFFICULTIES) {
     const requested = Number(config[diff] || 0);
@@ -63,7 +64,6 @@ export const buildTest = async (userId, subjectId, chapterId, classLevel, config
     const count = Number(config[diff] || 0);
     if (count === 0) continue;
 
-    // We already validated count <= available[diff], so RANDOM()+LIMIT is safe
     const pool = await db
       .select({ id: questions.id })
       .from(questions)
@@ -96,6 +96,114 @@ export const buildTest = async (userId, subjectId, chapterId, classLevel, config
     .returning();
 
   return { test, selectedIds, missing };
+};
+
+/**
+ * Build a test from multiple chapters with per-chapter configs (multi-chapter mode).
+ * chaptersPayload: Array of { chapterId, weight, config: { easy, medium, difficult, extreme } }
+ */
+export const buildMultiChapterTest = async (userId, subjectId, classLevel, globalConfig, chaptersPayload) => {
+  if (!chaptersPayload || chaptersPayload.length === 0)
+    throw new Error("At least one chapter required");
+
+  const totalRequested = chaptersPayload.reduce((sum, ch) => {
+    return sum + Object.values(ch.config).reduce((a, b) => a + (Number(b) || 0), 0);
+  }, 0);
+  if (totalRequested === 0) throw new Error("Must request at least 1 question");
+
+  const allViolations = [];
+  const allSelectedIds = [];
+  const missing = [];
+
+  // Validate and select per chapter
+  for (const ch of chaptersPayload) {
+    const { chapterId, config: chConfig } = ch;
+
+    const availRows = await db
+      .select({ difficulty: questions.difficulty, cnt: sql`COUNT(*)` })
+      .from(questions)
+      .where(eq(questions.chapterId, chapterId))
+      .groupBy(questions.difficulty);
+
+    const available = { easy: 0, medium: 0, difficult: 0, extreme: 0 };
+    for (const r of availRows) available[r.difficulty] = Number(r.cnt);
+
+    for (const diff of DIFFICULTIES) {
+      const requested = Number(chConfig[diff] || 0);
+      if (requested > 0 && requested > available[diff]) {
+        const chapterRow = await db.query.chapters.findFirst({ where: eq(chapters.id, chapterId) });
+        allViolations.push({
+          difficulty: diff,
+          requested,
+          available: available[diff],
+          chapter: chapterRow?.name || chapterId,
+        });
+      }
+    }
+  }
+
+  if (allViolations.length > 0) {
+    const details = allViolations
+      .map((v) => `${v.chapter}/${v.difficulty}: requested ${v.requested}, only ${v.available} available`)
+      .join("; ");
+    throw Object.assign(new Error(`Not enough questions: ${details}`), {
+      code: "INSUFFICIENT_QUESTIONS",
+      violations: allViolations,
+    });
+  }
+
+  // Select questions per chapter
+  for (const ch of chaptersPayload) {
+    const { chapterId, config: chConfig } = ch;
+    for (const diff of DIFFICULTIES) {
+      const count = Number(chConfig[diff] || 0);
+      if (count === 0) continue;
+
+      const pool = await db
+        .select({ id: questions.id })
+        .from(questions)
+        .where(and(eq(questions.chapterId, chapterId), eq(questions.difficulty, diff)))
+        .orderBy(sql`RANDOM()`)
+        .limit(count);
+
+      pool.forEach((q) => allSelectedIds.push(q.id));
+    }
+  }
+
+  if (allSelectedIds.length === 0) throw new Error("No questions found for this selection");
+
+  const subject = await db.query.subjects.findFirst({ where: eq(subjects.id, subjectId) });
+
+  // Build title from chapter names
+  const chapterNames = await Promise.all(
+    chaptersPayload.map(ch =>
+      db.query.chapters.findFirst({ where: eq(chapters.id, ch.chapterId) })
+    )
+  );
+  const chapterLabel = chapterNames
+    .map(c => c?.name || "?")
+    .join(", ");
+
+  const title = `${subject?.name || "Test"} – ${chapterLabel} (Class ${classLevel || "?"})`;
+
+  // Use first chapterId for schema compat (chapterId column); store full payload in config
+  const primaryChapterId = chaptersPayload[0].chapterId;
+
+  const [test] = await db
+    .insert(generatedTests)
+    .values({
+      userId,
+      subjectId,
+      chapterId: primaryChapterId,
+      classLevel: classLevel || chapterNames[0]?.classLevel || "unknown",
+      config: { ...globalConfig, _chapters: chaptersPayload },
+      questionIds: allSelectedIds,
+      title,
+      status: "completed",
+    })
+    .returning();
+
+  return { test, selectedIds: allSelectedIds, missing };
 };
 
 export const fetchTest = async (testId, userId) => {

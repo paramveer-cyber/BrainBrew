@@ -3,6 +3,7 @@ import {
   fetchClasses,
   fetchChapters,
   buildTest,
+  buildMultiChapterTest,
   fetchTest,
   fetchMyTests,
   fetchStats,
@@ -42,9 +43,41 @@ export const getChapters = async (req, res) => {
 
 export const generateTest = async (req, res) => {
   try {
-    const { subjectId, chapterId, classLevel, config } = req.body;
-    if (!subjectId || !chapterId || !config)
-      return res.status(400).json({ message: "subjectId, chapterId, config required" });
+    const { subjectId, chapterId, classLevel, config, chapters } = req.body;
+
+    if (!subjectId || !config)
+      return res.status(400).json({ message: "subjectId and config required" });
+
+    // Multi-chapter mode: chapters array provided with per-chapter configs
+    const isMultiChapter = Array.isArray(chapters) && chapters.length > 0;
+
+    if (isMultiChapter) {
+      // Validate each chapter entry
+      for (const ch of chapters) {
+        if (!ch.chapterId || typeof ch.config !== "object") {
+          return res.status(400).json({ message: "Each chapter must have chapterId and config" });
+        }
+      }
+
+      const { test, selectedIds, missing } = await buildMultiChapterTest(
+        req.user.userId,
+        subjectId,
+        classLevel,
+        config,
+        chapters
+      );
+
+      return res.json({
+        testId: test.id,
+        title: test.title,
+        totalQuestions: selectedIds.length,
+        missing,
+      });
+    }
+
+    // Single-chapter mode (legacy)
+    if (!chapterId)
+      return res.status(400).json({ message: "chapterId required (or provide chapters array)" });
 
     const { test, selectedIds, missing } = await buildTest(
       req.user.userId,

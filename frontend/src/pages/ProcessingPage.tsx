@@ -3,12 +3,19 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { ProgressBar } from "../components/ui";
 
+interface ChapterConfig {
+  chapterId: string;
+  weight: number;
+  config: { easy: number; medium: number; difficult: number; extreme: number };
+}
+
 interface LocationState {
   subjectId: string;
-  chapterId: string;
+  chapterId: string; // legacy compat (first chapter)
   classLevel: string;
   config: { easy: number; medium: number; difficult: number; extreme: number };
   total: number;
+  chapters?: ChapterConfig[]; // multi-chapter mode
 }
 
 const STEPS = [
@@ -40,7 +47,6 @@ export default function ProcessingPage() {
     called.current = true;
 
     (async () => {
-      // Animate steps
       let si = 0;
       const interval = setInterval(() => {
         if (si < STEPS.length) {
@@ -54,18 +60,30 @@ export default function ProcessingPage() {
       }, 350);
 
       try {
+        const isMultiChapter = state.chapters && state.chapters.length > 1;
+
+        if (isMultiChapter) {
+          addLog(`[engine] multi-chapter mode — ${state.chapters!.length} chapters`);
+        }
+
+        const body = isMultiChapter
+          ? {
+              subjectId: state.subjectId,
+              classLevel: state.classLevel || undefined,
+              config: state.config,
+              chapters: state.chapters,
+            }
+          : {
+              subjectId: state.subjectId,
+              chapterId: state.chapterId,
+              classLevel: state.classLevel || undefined,
+              config: state.config,
+            };
+
         const result = await apiFetch<{
           testId: string; title: string; totalQuestions: number;
           missing?: { difficulty: string; requested: number; available: number }[];
-        }>("/generate", {
-          method: "POST",
-          body: {
-            subjectId: state.subjectId,
-            chapterId: state.chapterId,
-            classLevel: state.classLevel || undefined,
-            config: state.config,
-          },
-        });
+        }>("/generate", { method: "POST", body });
 
         clearInterval(interval);
         setPct(100);
@@ -106,7 +124,6 @@ export default function ProcessingPage() {
       padding: 24,
     }}>
       <div style={{ width: "100%", maxWidth: 540 }}>
-        {/* Header */}
         <div style={{ marginBottom: 32, textAlign: "center" }}>
           <div style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -120,7 +137,6 @@ export default function ProcessingPage() {
           </div>
         </div>
 
-        {/* Progress */}
         <div style={{
           background: "var(--bg-surface)", border: "1px solid var(--border)",
           borderRadius: "var(--radius-lg)", padding: 24, marginBottom: 20,
@@ -135,7 +151,6 @@ export default function ProcessingPage() {
           </div>
           <ProgressBar pct={pct} />
 
-          {/* Config display */}
           {state && (
             <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
               {Object.entries(state.config).filter(([, v]) => v > 0).map(([k, v]) => (
@@ -148,11 +163,19 @@ export default function ProcessingPage() {
                   {v} {k}
                 </span>
               ))}
+              {state.chapters && state.chapters.length > 1 && (
+                <span style={{
+                  fontFamily: "var(--font-mono)", fontSize: 11, padding: "3px 8px",
+                  borderRadius: 4, background: "rgba(45,212,191,0.08)",
+                  border: "1px solid var(--accent)44", color: "var(--accent)",
+                }}>
+                  {state.chapters.length} chapters
+                </span>
+              )}
             </div>
           )}
         </div>
 
-        {/* Terminal log */}
         <div style={{
           background: "#020810", border: "1px solid var(--border)",
           borderRadius: "var(--radius-lg)", padding: 20,
