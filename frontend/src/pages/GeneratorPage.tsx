@@ -151,7 +151,7 @@ const WeightSlider = ({ value, onChange, chapterName, totalWeight, available, on
           type="number" min={1} max={100} value={value}
           onChange={e => onChange(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
           style={{
-            width: 42, padding: "3px 6px", borderRadius: 6,
+            width: 52, padding: "3px 6px", borderRadius: 6,
             border: "1px solid var(--border)", background: "var(--bg-base)",
             color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: 12,
             textAlign: "center",
